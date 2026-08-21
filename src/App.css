@@ -1,0 +1,9 @@
+
+.timer-container {
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+input::placeholder {
+  color: #aaa;
+  font-size: 0.9rem;
+}
