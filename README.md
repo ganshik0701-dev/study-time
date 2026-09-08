@@ -134,3 +134,126 @@ If you are developing a production application, we recommend using TypeScript wi
 
   • ESLint 10 (eslint: ^10.3.0, eslint-plugin-react-hooks, eslint-plugin-react-refresh):
       • React 훅 의존성 규칙 및 최신 ECMAScript 표준 정적 분석.
+
+  ------------------------------------------------------
+
+  ──────
+  ### 1. 로컬 스토리지(LocalStorage)
+
+  로컬 스토리지는 웹 브라우저가 클라이언트(사용자 컴퓨터)에 데이터를 영구적으로 보관할 수 있도록 제공하는
+  HTML5의 표준 Web Storage API입니다.
+  • 키-값(Key-Value) 구조: 모든 데이터는 키(Key): 값(Value) 쌍으로 저장되며, 오직 문자열(String) 형태로만
+  저장됩니다.
+  • 영구성 (Persistence): 사용자가 브라우저를 종료하거나 컴퓨터를 재부팅해도 데이터가 지워지지 않고 유지됩니다.
+  (사용자가 직접 캐시/쿠키를 삭제하거나 개발자가 코드로 지우기 전까지 유지)
+  • 동일 출처 정책(SOP, Same-Origin Policy): 도메인, 프로토콜, 포트 번호가 같은 페이지끼리만 스토리지를
+  공유하므로 타 웹사이트가 내 저장소 데이터에 접근할 수 없습니다.
+  • 용량: 브라우저별로 대략 5MB ~ 10MB 내외의 텍스트 데이터를 저장할 수 있습니다.
+
+  #### 💡 쿠키(Cookie) 및 세션 스토리지(SessionStorage)와의 차이점
+
+   구분        | 로컬 스토리지 (LocalStorag… | 세션 스토리지 (SessionStor… | 쿠키 (Cookie)
+  -------------|-----------------------------|-----------------------------|------------------------------------
+   데이터 수명 | 영구적 (삭제 전까지 유지)   | 브라우저 탭을 닫으면 소멸   | 만료일(Expires) 설정에 따름
+   저장 위치   | 브라우저 내부               | 브라우저 내부               | 브라우저 내부 & 매 HTTP 요청 시
+               |                             |                             | 서버로 자동 전송
+   용량 한도   | 약 5MB                      | 약 5MB                      | 약 4KB (매우 작음)
+   주요 목적   | 설정값, 영구적인 사용자     | 단일 탭 내 일시적 폼 데이터 | 서버 인증 세션/토큰 관리
+               | 데이터                      |                             |
+  ──────
+  ### 2. 본 프로젝트에서의 로컬 스토리지 활용
+  이 앱은 백엔드 데이터베이스(DB) 서버 없이 브라우저만으로 동작하는 프론트엔드 단독 앱입니다. 따라서 새로고침을
+  하거나 창을 닫아도 사용자의 학습 기록이 날아가지 않도록 로컬 스토리지를 활용합니다.
+  #### 1) 저장소 식별 키 (Timer.jsx:5)
+    const STORAGE_KEY = 'taeyi_study_timer_v1';
+  네이밍되어 있습니다.
+
+  • 키 이름 끝에 _v1 같은 버전을 명시하여, 추후 저장 데이터 구조가 바뀌더라도 이전 버전 데이터와 충돌하지 않도록
+  #### 2) 저장되는 데이터 구조
+  로컬 스토리지에는 객체가 JSON 문자열(JSON.stringify)로 변환되어 저장됩니다:
+    {
+      "studyMins": 30,          // 설정된 공부 시간(분)
+      "breakMins": 10,          // 설정된 휴식 시간(분)
+      "cycles": 3,              // 완료한 총 교시 수
+      "totalStudyTime": 5400,   // 누적 순공 시간 (초 단위)
+      "todoText": "리액트 복습", // 작성한 목표/과목
+      "isTodoCompleted": true   // 목표 달성 여부 (true/false)
+    }
+  │ Note
+  │ 실시간으로 줄어드는 현재 타이머 시간(timeLeft)이나 일시정지 여부(isActive)는 저장하지 않습니다. 사용자가
+  │ 때문입니다.
+  │ 브라우저를 껐다 켰을 때 멈춘 초 단위 중간 상태가 아닌, 깨끗한 1교시 시작 시간으로 초기화되도록 설계되었기
+  ──────
+  ### 3. 코드 레벨 동작 원리 분석
+
+  Timer.jsx에서는 React의 라이프사이클과 결합하여 매우 안전하고 효율적인 방식으로 로컬 스토리지를 제어합니다.
+  #### 1) 앱 시작 시: 데이터 복원 (Timer.jsx:301-321)
+    const getInitialData = () => {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          return JSON.parse(saved); // 문자열 -> 자바스크립트 객체 변환
+        }
+      } catch (err) {
+        console.error('Failed to load local storage data:', err);
+      }
+      // 저장된 게 없거나 파싱 실패 시 기본값 리턴
+      return {
+        studyMins: 30,
+        breakMins: 10,
+        cycles: 0,
+        totalStudyTime: 0,
+        todoText: '',
+        isTodoCompleted: false,
+      };
+    };
+    
+    const Timer = () => {
+      // 컴포넌트가 리렌더링될 때마다 스토리지를 중복 조회하지 않도록 useRef 사용
+      const initialData = useRef(getInitialData()).current;
+      const [studyMins, setStudyMins] = useState(initialData.studyMins || 30);
+      // ...
+  • 안전성 (try...catch): 사용자가 시크릿 모드를 켜거나, 로컬 스토리지에 잘못된 JSON 문자열이 들어가 있어도 앱이
+  멈추지 않고 기본값으로 안전하게 렌더링됩니다.
+  • 성능 최적화 (useRef): 타이머 동작으로 인해 컴포넌트가 0.25초마다 리렌더링되더라도, 디스크 I/O 작업인
+  localStorage.getItem은 컴포넌트가 처음 생성될 때 단 한 번만 실행됩니다.
+  #### 2) 상태 변경 시: 자동 저장 파이프라인 (Timer.jsx:351-366)
+    useEffect(() => {
+      try {
+        const dataToSave = {
+          studyMins,
+          breakMins,
+          cycles,
+          totalStudyTime,
+          todoText,
+          isTodoCompleted,
+        };
+        // 자바스크립트 객체 -> JSON 문자열 변환 후 저장
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+      } catch (err) {
+        console.error('Failed to save to local storage:', err);
+      }
+    }, [studyMins, breakMins, cycles, totalStudyTime, todoText, isTodoCompleted]);
+
+  • 의존성 배열(deps)에 포함된 6개 상태 중 하나라도 변하면, 변경된 최신 값이 즉각 로컬 스토리지에
+  덮어쓰기(setItem)됩니다.
+  • 공부 시간이 1초 누적되거나, 투두 체크를 누르는 순간 실시간으로 동기화됩니다.
+  ──────
+  ### 4. 로컬 스토리지의 장점과 주의할 점
+
+  #### 장점
+
+  1. 서버 없는 영속성: 별도의 백엔드 서버나 DB 계정이 없어도 사용자 경험을 비약적으로 끌어올릴 수 있습니다.
+  2. 트래픽 제로: 쿠키처럼 요청할 때마다 HTTP 헤더를 통해 서버로 전송되지 않으므로 네트워크 대역폭을 낭비하지
+  않습니다.
+  3. 간결한 API: getItem, setItem, removeItem, clear 4가지 메서드로 쉽게 다룰 수 있습니다.
+
+  #### 주의할 점 (한계점)
+
+  1. 오직 문자열만 저장 가능: 숫자, 불리언, 객체, 배열을 그대로 넣으면 [object Object] 문자열로 변환되므로,
+  반드시 JSON.stringify()와 JSON.parse()를 거쳐야 합니다.
+  2. 동기식(Synchronous) 동작: 메인 UI 스레드를 차단(Blocking)하므로 수십 MB 단위의 너무 큰 데이터를 잦은 빈도로
+  읽고 쓰면 브라우저가 버벅일 수 있습니다. (현재 프로젝트의 수 KB 수준 데이터는 성능에 전혀 영향 없음)
+  3. 보안 민감 데이터 저장 금지: XSS(크로스 사이트 스크립팅) 공격에 취약하므로 비밀번호, 결제 정보, 중요한 세션
+  토큰 등은 로컬 스토리지에 보관하지 않아야 합니다. (현재 프로젝트처럼 타이머 설정, 공부 시간, 할 일 메모 등의
+  데이터 저장에는 최적의 도구입니다)
